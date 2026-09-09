@@ -1,0 +1,21 @@
+server:
+  port: 8080
+
+spring:
+  profiles:
+    # 本地开发默认 local；线上由 compose 环境变量 SPRING_PROFILES_ACTIVE=prod 覆盖
+    active: local
+
+# 业务自定义配置：占位符由 .env 注入的环境变量解析（Spring 原生机制）
+ailang:
+  jwt:
+    secret: ${JWT_SECRET:}
+    expire-days: ${JWT_EXPIRE_DAYS:7}
+  admin:
+    username: ${ADMIN_USERNAME:}
+    password: ${ADMIN_PASSWORD:}
+  minio:
+    endpoint: ${MINIO_ENDPOINT:}
+    access-key: ${MINIO_ACCESS_KEY:}
+    secret-key: ${MINIO_SECRET_KEY:}
+    bucket: ${MINIO_BUCKET:ailang-images}

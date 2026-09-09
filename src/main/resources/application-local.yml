@@ -1,0 +1,24 @@
+# 本地开发：PostgreSQL 经 SSH 隧道（SshConfig 启动时自动建立，无需手动开隧道）
+spring:
+  datasource:
+    url: jdbc:postgresql://${PG_HOST}:${PG_PORT}/${PG_DATABASE}
+    username: ${PG_USERNAME:}
+    password: ${PG_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+
+# SSH 隧道：本地 PG_PORT → 服务器 5432；私钥默认取 ~/.ssh/id_rsa，可用 SSH_PRIVATE_KEY 覆盖
+ssh:
+  tunnel:
+    enabled: ${SSH_TUNNEL_ENABLED}
+    host: ${SSH_HOST}
+    port: 22
+    username: ${SSH_USER}
+    private-key: ${SSH_PRIVATE_KEY:}
+    forwards:
+      - local-port: ${PG_PORT}
+        remote-host: 127.0.0.1
+        remote-port: 5432
+
+logging:
+  level:
+    com.ailang: debug
