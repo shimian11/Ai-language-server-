@@ -5,3 +5,9 @@ target/
 *.iml
 .vscode/
 .DS_Store
+
+# nginx 部署参考：SSL 私钥/证书为敏感信息，禁止入库
+nginx/ssl/
+nginx/ssl/*.pem
+nginx/ssl/*.key
+nginx/conf.d/wheretogo.conf
