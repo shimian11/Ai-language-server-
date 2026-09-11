@@ -1,0 +1,49 @@
+# 后端 CI/CD：构建 jar → 上传服务器 → 重建容器
+# 触发：push 到 master 自动；也可在 Actions 页面手动 Run workflow
+# 前置：仓库 Settings → Secrets and variables → Actions 配置 SERVER_SSH_KEY（部署专用私钥）
+name: Deploy Backend
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 准备 JDK 17（含 Maven 缓存）
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: 打包
+        run: mvn -B -DskipTests package
+
+      - name: 校验 PostgreSQL 驱动已打入 jar
+        run: |
+          jar=$(ls target/*.jar | head -1)
+          if ! unzip -l "$jar" | grep -q 'postgresql'; then
+            echo "::error::jar 缺少 PostgreSQL 驱动（检查 pom 依赖）"
+            exit 1
+          fi
+          echo "校验通过：$jar"
+
+      - name: 上传 jar 并重建容器
+        env:
+          SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+          HOST: 8.134.91.151
+        run: |
+          install -m 600 -D /dev/null ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          jar=$(ls target/*.jar | head -1)
+          echo "上传 $jar -> root@$HOST:/opt/ailang/server/app.jar"
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            "$jar" root@$HOST:/opt/ailang/server/app.jar
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new root@$HOST \
+            "cd /opt/ailang/server && docker compose up -d --build && docker compose ps --format 'table {{.Name}}\t{{.Status}}'"
