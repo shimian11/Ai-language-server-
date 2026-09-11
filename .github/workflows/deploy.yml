@@ -45,5 +45,13 @@ jobs:
           echo "上传 $jar -> root@$HOST:/opt/ailang/server/app.jar"
           scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
             "$jar" root@$HOST:/opt/ailang/server/app.jar
+          # 1) 只强制重建 backend：确保按当前 /opt/ailang/server/.env 生效（.env 变更不会自动触发重建）
+          # 2) 其余服务用普通 up：仅当其配置/镜像变化时才重建，避免 minio/web 无谓抖动
+          # 3) reload wheretogo-nginx：backend 重建后容器 IP 可能变化，须刷新 nginx 缓存的 upstream IP，
+          #    否则会持续 502（nginx 在启动时解析并缓存 proxy_pass 主机名）
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new root@$HOST \
-            "cd /opt/ailang/server && docker compose up -d --build && docker compose ps --format 'table {{.Name}}\t{{.Status}}'"
+            "set -e; cd /opt/ailang/server && \
+             docker compose up -d --build --force-recreate backend && \
+             docker compose up -d && \
+             (docker exec wheretogo-nginx nginx -s reload || true) && \
+             docker compose ps --format 'table {{.Name}}\t{{.Status}}'"
