@@ -1,0 +1,99 @@
+services:
+  db-init:
+    image: postgres:16-alpine
+    container_name: ailang-db-init
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        n=0
+        until PGPASSWORD=$$PG_PASSWORD psql -h $$PG_HOST -U $$PG_USERNAME -d $$PG_DATABASE -c 'SELECT 1' >/dev/null 2>&1; do
+          n=$$((n+1))
+          [ $$n -gt 30 ] && echo "database unreachable" && exit 1
+          sleep 3
+        done
+        PGPASSWORD=$$PG_PASSWORD psql -h $$PG_HOST -U $$PG_USERNAME -d $$PG_DATABASE -v ON_ERROR_STOP=1 -f /init.sql
+    environment:
+      PG_HOST: wheretogo-postgres
+      PG_DATABASE: ${PG_DATABASE:-ailang}
+      PG_USERNAME: ${PG_USERNAME:?set PG_USERNAME in .env}
+      PG_PASSWORD: ${PG_PASSWORD:?set PG_PASSWORD in .env}
+    volumes:
+      - ./init.sql:/init.sql:ro
+    networks:
+      - wheretogo
+    restart: "no"
+
+  minio:
+    image: minio/minio:latest
+    container_name: ailang-minio
+    command: server /data --address ":9000"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY in .env}
+      MINIO_BROWSER: "off"
+      # 启用 virtual-hosted bucket（桶.s3域名）访问，配合 nginx 通配 server_name
+      MINIO_DOMAIN: ${MINIO_DOMAIN:-s3.where2go.xyz}
+    volumes:
+      - minio-data:/data
+    networks:
+      - default
+      - wheretogo
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    mem_limit: 160m
+    restart: unless-stopped
+
+  create-bucket:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: /bin/sh
+    # 建桶（幂等）+ 设公共读（objectUrl 匿名可访问，幂等）
+    command: -c "mc alias set local http://minio:9000 $$MINIO_ACCESS_KEY $$MINIO_SECRET_KEY && mc mb --ignore-existing local/$$MINIO_BUCKET && mc anonymous set download local/$$MINIO_BUCKET"
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET:-ailang-images}
+    restart: "no"
+
+  web:
+    image: nginx:alpine
+    container_name: ailang-web
+    volumes:
+      - /opt/ailang/frontend/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+      - /opt/ailang/frontend/dist:/usr/share/nginx/html:ro
+    networks:
+      - wheretogo
+    mem_limit: 64m
+    restart: unless-stopped
+
+  backend:
+    build: .
+    container_name: ailang-backend
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      JAVA_OPTS: -Xms96m -Xmx256m -XX:+UseSerialGC -Duser.timezone=Asia/Shanghai
+    env_file: .env
+    networks:
+      - default
+      - wheretogo
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+    mem_limit: 448m
+    restart: unless-stopped
+
+volumes:
+  minio-data:
+
+networks:
+  wheretogo:
+    external: true
