@@ -46,6 +46,11 @@ services:
       retries: 5
       start_period: 10s
     mem_limit: 160m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: unless-stopped
 
   create-bucket:
@@ -71,6 +76,11 @@ services:
     networks:
       - wheretogo
     mem_limit: 64m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: unless-stopped
 
   backend:
@@ -89,6 +99,11 @@ services:
       minio:
         condition: service_healthy
     mem_limit: 448m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: unless-stopped
 
 volumes:
