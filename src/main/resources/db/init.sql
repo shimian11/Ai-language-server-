@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS entry (
   title        VARCHAR(120) NOT NULL,
   summary      VARCHAR(500) NOT NULL DEFAULT '',
   category_id  BIGINT       NOT NULL REFERENCES category(id),
+  platform     VARCHAR(10)  NOT NULL DEFAULT 'web',
   style        VARCHAR(50)  NOT NULL,
   prompt       TEXT         NOT NULL,
   html_source  TEXT         NULL,
@@ -41,6 +42,7 @@ CREATE TABLE IF NOT EXISTS entry_image (
 
 CREATE INDEX IF NOT EXISTS idx_status_date ON entry (status, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_category ON entry (category_id);
+CREATE INDEX IF NOT EXISTS idx_category_platform ON entry (category_id, platform);
 CREATE INDEX IF NOT EXISTS idx_entry_image_entry ON entry_image (entry_id);
 
 -- updated_at 自动更新（PG 无 ON UPDATE CURRENT_TIMESTAMP，以触发器实现）
@@ -81,20 +83,22 @@ SELECT v.name, v.sort FROM (VALUES
 ) AS v(name, sort)
 WHERE NOT EXISTS (SELECT 1 FROM category WHERE name = v.name);
 
-INSERT INTO entry (title, summary, category_id, style, prompt, tags, status, published_at)
+INSERT INTO entry (title, summary, category_id, platform, style, prompt, tags, status, published_at)
 SELECT '指挥中心主视觉大屏：环形数据围绕核心指标',
        '中央放核心 KPI 大数字，四周环绕趋势图与环形占比，一眼锁定重点。',
        (SELECT id FROM category WHERE name = '大屏设计'),
-       '中心聚焦型',
+       'web',
+       '中心聚焦型 · HUD',
        '设计一张指挥中心数据大屏，采用中心聚焦型布局：画面正中是一个超大号的核心 KPI 数字（今日综合达成率），四周以三圈同心圆环环绕分布六个卫星指标卡（接入设备、待处理告警、平均响应、今日工单、用户满意度、在线率）。整体深蓝底色，青色与亮蓝作为高亮色，指标卡带细边框与微光效果，风格参考科幻指挥舱 HUD 界面，构图对称、重心稳定，16:9 横版。',
        '数据可视化,深色,HUD', 'PUBLISHED', NOW()
 WHERE NOT EXISTS (SELECT 1 FROM entry WHERE title = '指挥中心主视觉大屏：环形数据围绕核心指标');
 
-INSERT INTO entry (title, summary, category_id, style, prompt, tags, status, published_at)
+INSERT INTO entry (title, summary, category_id, platform, style, prompt, tags, status, published_at)
 SELECT 'SaaS 产品落地页：左文右图经典分栏',
        '左侧大标题 + 行动按钮 + 信任背书，右侧产品截图带浮动阴影。',
        (SELECT id FROM category WHERE name = '落地页'),
-       '左右分栏型',
+       'web',
+       '左文右图分栏',
        '设计一个 SaaS 产品落地页首屏，左右分栏布局：左侧为大标题、副标题、主行动按钮与客户信任背书，右侧为带浮动阴影的产品截图。整体浅色极简风格，留白充足，分栏比例约 5:7。',
        'SaaS,首屏', 'PUBLISHED', NOW()
 WHERE NOT EXISTS (SELECT 1 FROM entry WHERE title = 'SaaS 产品落地页：左文右图经典分栏');
