@@ -85,7 +85,8 @@ public class EntryServiceImpl implements EntryService {
         int size = query.getSize() == null || query.getSize() < 1 ? 10 : query.getSize();
         Page<Entry> result = entryMapper.selectPage(new Page<>(page, size), wrapper);
 
-        List<EntryVO> vos = toVOs(result.getRecords(), true);
+        // htmlSource 返回全文：卡片/列表需要完整的 HTML 才能实时渲染预览（截断会产生残缺 HTML 导致 iframe 白屏）
+        List<EntryVO> vos = toVOs(result.getRecords(), false);
         return PageResult.of(vos, result.getTotal(), result.getCurrent(), result.getSize());
     }
 
