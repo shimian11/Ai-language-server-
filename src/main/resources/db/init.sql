@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS category (
   updated_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- 案例
+-- 案例（一个案例 = 一条记录；同一大类下可录入多条案例）
 CREATE TABLE IF NOT EXISTS entry (
   id           BIGSERIAL PRIMARY KEY,
   title        VARCHAR(120) NOT NULL,
@@ -70,35 +70,5 @@ COMMENT ON COLUMN entry.html_source IS 'HTML 源码（可空，与图片至少�
 COMMENT ON TABLE entry_image IS '案例效果图';
 COMMENT ON COLUMN entry_image.url IS 'MinIO object URL';
 
--- ============================================================
--- 初始数据（幂等）
--- ============================================================
-
-INSERT INTO category (name, sort)
-SELECT v.name, v.sort FROM (VALUES
-  ('大屏设计', 1),
-  ('轮播', 2),
-  ('落地页', 3),
-  ('导航菜单', 4)
-) AS v(name, sort)
-WHERE NOT EXISTS (SELECT 1 FROM category WHERE name = v.name);
-
-INSERT INTO entry (title, summary, category_id, platform, style, prompt, tags, status, published_at)
-SELECT '指挥中心主视觉大屏：环形数据围绕核心指标',
-       '中央放核心 KPI 大数字，四周环绕趋势图与环形占比，一眼锁定重点。',
-       (SELECT id FROM category WHERE name = '大屏设计'),
-       'web',
-       '中心聚焦型 · HUD',
-       '设计一张指挥中心数据大屏，采用中心聚焦型布局：画面正中是一个超大号的核心 KPI 数字（今日综合达成率），四周以三圈同心圆环环绕分布六个卫星指标卡（接入设备、待处理告警、平均响应、今日工单、用户满意度、在线率）。整体深蓝底色，青色与亮蓝作为高亮色，指标卡带细边框与微光效果，风格参考科幻指挥舱 HUD 界面，构图对称、重心稳定，16:9 横版。',
-       '数据可视化,深色,HUD', 'PUBLISHED', NOW()
-WHERE NOT EXISTS (SELECT 1 FROM entry WHERE title = '指挥中心主视觉大屏：环形数据围绕核心指标');
-
-INSERT INTO entry (title, summary, category_id, platform, style, prompt, tags, status, published_at)
-SELECT 'SaaS 产品落地页：左文右图经典分栏',
-       '左侧大标题 + 行动按钮 + 信任背书，右侧产品截图带浮动阴影。',
-       (SELECT id FROM category WHERE name = '落地页'),
-       'web',
-       '左文右图分栏',
-       '设计一个 SaaS 产品落地页首屏，左右分栏布局：左侧为大标题、副标题、主行动按钮与客户信任背书，右侧为带浮动阴影的产品截图。整体浅色极简风格，留白充足，分栏比例约 5:7。',
-       'SaaS,首屏', 'PUBLISHED', NOW()
-WHERE NOT EXISTS (SELECT 1 FROM entry WHERE title = 'SaaS 产品落地页：左文右图经典分栏');
+-- 说明：初始示例数据已按需求移除（改为由管理员在后台自行录入）。
+--       如需默认分类/示例案例，可在下方以幂等 INSERT ... WHERE NOT EXISTS 补充。
