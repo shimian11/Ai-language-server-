@@ -6,6 +6,7 @@ import com.ailang.service.entry.pojo.dto.EntrySaveRequest;
 import com.ailang.service.entry.pojo.dto.EntryStatusRequest;
 import com.ailang.service.entry.pojo.dto.PageResult;
 import com.ailang.service.entry.pojo.vo.EntryVO;
+import com.ailang.service.entry.pojo.vo.EntryGroupVO;
 import com.ailang.service.entry.service.EntryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -37,12 +38,23 @@ public class EntryController {
     /**
      * #7 分页列表。
      *
-     * @param query 查询参数（page,size,categoryId,keyword,status）
+     * @param query 查询参数（page,size,categoryId,title,keyword,status）
      * @return 分页结果
      */
     @GetMapping
     public ApiResponse<PageResult<EntryVO>> page(EntryListQuery query) {
         return ApiResponse.ok(entryService.page(query, authenticated()));
+    }
+
+    /**
+     * 后台分组视图：按 (设计大类, 案例标题) 聚合。
+     *
+     * @param query 查询参数（keyword,status,platform）
+     * @return 分组列表
+     */
+    @GetMapping("/groups")
+    public ApiResponse<List<EntryGroupVO>> groups(EntryListQuery query) {
+        return ApiResponse.ok(entryService.groups(query, true));
     }
 
     /**

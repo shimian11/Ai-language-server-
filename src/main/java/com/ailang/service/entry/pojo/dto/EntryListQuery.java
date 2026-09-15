@@ -20,6 +20,9 @@ public class EntryListQuery {
     /** 关键字搜索（标题/摘要，可空） */
     private String keyword;
 
+    /** 分组内精确过滤：同组共享的案例标题（用于后台分组详情的二级列表） */
+    private String title;
+
     /** DRAFT / PUBLISHED；空 = 全部（仅鉴权后生效，未登录强制 PUBLISHED） */
     private String status;
 

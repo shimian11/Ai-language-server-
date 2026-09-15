@@ -5,6 +5,7 @@ import com.ailang.service.entry.pojo.dto.EntryListQuery;
 import com.ailang.service.entry.pojo.dto.EntrySaveRequest;
 import com.ailang.service.entry.pojo.vo.EntryVO;
 import com.ailang.service.entry.pojo.dto.PageResult;
+import com.ailang.service.entry.pojo.vo.EntryGroupVO;
 
 import java.util.List;
 
@@ -38,6 +39,9 @@ public interface EntryService {
 
     /** #13 相关案例：同大类已发布、排除自身、最近 2 条 */
     List<EntryVO> related(Long id);
+
+    /** 后台分组视图：按 (设计大类, 案例标题) 聚合，返回每组统计与封面 */
+    List<EntryGroupVO> groups(EntryListQuery query, boolean authenticated);
 
     /** #15 复制计数：copy_count 直接自增 */
     void incrementCopy(Long id);

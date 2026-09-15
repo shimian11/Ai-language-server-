@@ -7,6 +7,7 @@ import com.ailang.service.entry.pojo.vo.EntryImageVO;
 import com.ailang.service.entry.pojo.dto.EntryListQuery;
 import com.ailang.service.entry.pojo.dto.EntrySaveRequest;
 import com.ailang.service.entry.pojo.vo.EntryVO;
+import com.ailang.service.entry.pojo.vo.EntryGroupVO;
 import com.ailang.service.entry.pojo.dto.PageResult;
 import com.ailang.service.entry.pojo.entity.Category;
 import com.ailang.service.entry.pojo.entity.Entry;
@@ -63,6 +64,9 @@ public class EntryServiceImpl implements EntryService {
         if (query.getCategoryId() != null) {
             wrapper.eq("category_id", query.getCategoryId());
         }
+        if (query.getTitle() != null && !query.getTitle().isBlank()) {
+            wrapper.eq("title", query.getTitle());
+        }
         if (query.getKeyword() != null && !query.getKeyword().isBlank()) {
             String keyword = query.getKeyword().trim();
             wrapper.and(w -> w.like("title", keyword)
@@ -71,7 +75,9 @@ public class EntryServiceImpl implements EntryService {
                     .or().like("tags", keyword));
         }
         if (query.getPlatform() != null && !query.getPlatform().isBlank()) {
-            wrapper.eq("platform", query.getPlatform());
+            // 语义：选 Web → web + 通用；选 App → app + 通用；选通用 → 仅通用
+            String p = query.getPlatform();
+            wrapper.and(w -> w.eq("platform", p).or().eq("platform", "general"));
         }
         wrapper.orderByDesc("COALESCE(published_at, created_at)");
 
@@ -157,20 +163,99 @@ public class EntryServiceImpl implements EntryService {
         entryMapper.deleteById(id);
     }
 
-    /** 相关案例：同大类已发布、排除自身、按时间倒序取最近 2 条 */
+    /** 相关案例：同大类已发布、排除自身；以当前 id 为基准向下推 5 个，不足则环形从开头补足；分类总数≤5 时推送全部 */
     @Override
     public List<EntryVO> related(Long id) {
         Entry self = entryMapper.selectById(id);
         if (self == null) {
             return List.of();
         }
-        QueryWrapper<Entry> wrapper = new QueryWrapper<Entry>()
+        List<Entry> all = entryMapper.selectList(new QueryWrapper<Entry>()
                 .eq("category_id", self.getCategoryId())
                 .eq("status", PUBLISHED)
-                .ne("id", id)
-                .orderByDesc("COALESCE(published_at, created_at)")
-                .last("LIMIT 2");
-        return toVOs(entryMapper.selectList(wrapper), true);
+                .orderByAsc("id")); // 含自身，id 升序
+        List<Entry> others = new ArrayList<>();
+        for (Entry e : all) {
+            if (!e.getId().equals(id)) {
+                others.add(e);
+            }
+        }
+        if (others.isEmpty()) {
+            return List.of();
+        }
+        final int WINDOW = 5;
+        // 分类总数（含自身）≤5：推送该分类下全部其他案例
+        if (all.size() <= WINDOW) {
+            return toVOs(others, true);
+        }
+        // 环形：从“id 大于当前案例”的首个位置起，向下取 5 个，越界则从开头继续
+        int start = 0;
+        for (int i = 0; i < others.size(); i++) {
+            if (others.get(i).getId() > id) {
+                start = i;
+                break;
+            }
+        }
+        List<Entry> picked = new ArrayList<>();
+        for (int k = 0; k < WINDOW; k++) {
+            picked.add(others.get((start + k) % others.size()));
+        }
+        return toVOs(picked, true);
+    }
+
+    /** 后台分组视图：按 (设计大类, 案例标题) 聚合，返回每组统计与封面 */
+    @Override
+    public List<EntryGroupVO> groups(EntryListQuery query, boolean authenticated) {
+        QueryWrapper<Entry> w = new QueryWrapper<Entry>()
+                .select("category_id", "title", "MIN(id) AS min_id", "COUNT(*) AS cnt")
+                .groupBy("category_id", "title")
+                .orderByAsc("MIN(id)");
+        String status = authenticated ? query.getStatus() : PUBLISHED;
+        if (status != null && !status.isBlank()) {
+            w.eq("status", status);
+        }
+        if (query.getKeyword() != null && !query.getKeyword().isBlank()) {
+            w.like("title", query.getKeyword().trim());
+        }
+        if (query.getPlatform() != null && !query.getPlatform().isBlank()) {
+            String p = query.getPlatform();
+            w.and(x -> x.eq("platform", p).or().eq("platform", "general"));
+        }
+        List<Map<String, Object>> rows = entryMapper.selectMaps(w);
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+        Set<Long> categoryIds = new HashSet<>();
+        Set<Long> minIds = new HashSet<>();
+        for (Map<String, Object> r : rows) {
+            categoryIds.add(((Number) r.get("category_id")).longValue());
+            minIds.add(((Number) r.get("min_id")).longValue());
+        }
+        Map<Long, String> catNames = new HashMap<>();
+        for (Category c : categoryMapper.selectList(
+                new LambdaQueryWrapper<Category>().in(Category::getId, categoryIds))) {
+            catNames.put(c.getId(), c.getName());
+        }
+        Map<Long, String> covers = new HashMap<>();
+        for (EntryImage im : entryImageMapper.selectList(new QueryWrapper<EntryImage>()
+                .in("entry_id", minIds)
+                .orderByDesc("is_main")
+                .orderByAsc("sort"))) {
+            covers.putIfAbsent(im.getEntryId(), im.getUrl());
+        }
+        List<EntryGroupVO> result = new ArrayList<>();
+        for (Map<String, Object> r : rows) {
+            Long categoryId = ((Number) r.get("category_id")).longValue();
+            long minId = ((Number) r.get("min_id")).longValue();
+            EntryGroupVO vo = new EntryGroupVO();
+            vo.setCategoryId(categoryId);
+            vo.setCategoryName(catNames.getOrDefault(categoryId, ""));
+            vo.setTitle((String) r.get("title"));
+            vo.setCount(((Number) r.get("cnt")).longValue());
+            vo.setCover(covers.get(minId));
+            result.add(vo);
+        }
+        return result;
     }
 
     /** 复制计数 +1：copy_count 直接自增 */
