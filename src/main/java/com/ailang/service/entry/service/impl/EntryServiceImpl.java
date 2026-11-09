@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -51,6 +52,7 @@ public class EntryServiceImpl implements EntryService {
     private final EntryMapper entryMapper;
     private final EntryImageMapper entryImageMapper;
     private final CategoryMapper categoryMapper;
+    private final com.ailang.service.article.mapper.ArticleMapper articleMapper;
 
     /** 分页查询案例：按状态/分类/关键词过滤，非管理员强制只看已发布 */
     @Override
@@ -78,6 +80,14 @@ public class EntryServiceImpl implements EntryService {
             // 语义：选 Web → web + 通用；选 App → app + 通用；选通用 → 仅通用
             String p = query.getPlatform();
             wrapper.and(w -> w.eq("platform", p).or().eq("platform", "general"));
+        }
+        // 标签筛选：精确匹配逗号分隔标签串中的一个（前后逗号锚定，避免子串误命中）
+        if (query.getTag() != null && !query.getTag().isBlank()) {
+            String tag = query.getTag().trim();
+            wrapper.and(w -> w.eq("tags", tag)
+                    .or().likeRight("tags", tag + ",")
+                    .or().likeLeft("tags", "," + tag)
+                    .or().apply("tags LIKE {0}", "%," + tag + ",%"));
         }
         wrapper.orderByDesc("COALESCE(published_at, created_at)");
 
@@ -164,52 +174,61 @@ public class EntryServiceImpl implements EntryService {
         entryMapper.deleteById(id);
     }
 
-    /** 相关案例：同大类已发布、排除自身；以当前 id 为基准向下推 5 个，不足则环形从开头补足；分类总数≤5 时推送全部 */
+    /** 相关案例：共享任一标签的已发布案例优先，其次全部已发布；环形取 5 条 */
     @Override
     public List<EntryVO> related(Long id) {
         Entry self = entryMapper.selectById(id);
         if (self == null) {
             return List.of();
         }
+        // 全部已发布（含自身），id 升序
         List<Entry> all = entryMapper.selectList(new QueryWrapper<Entry>()
-                .eq("category_id", self.getCategoryId())
                 .eq("status", PUBLISHED)
-                .orderByAsc("id")); // 含自身，id 升序
-        List<Entry> others = new ArrayList<>();
-        for (Entry e : all) {
-            if (!e.getId().equals(id)) {
-                others.add(e);
-            }
-        }
+                .orderByAsc("id"));
+        List<Entry> others = all.stream()
+                .filter(e -> !e.getId().equals(id))
+                .toList();
         if (others.isEmpty()) {
             return List.of();
         }
+        // 有共享标签的排前面（同分类次之），保持 id 升序稳定
+        Set<String> selfTags = splitTags(self.getTags());
+        List<Entry> ranked = others.stream()
+                .sorted(Comparator
+                        .comparing((Entry e) -> {
+                            long shared = splitTags(e.getTags()).stream().filter(selfTags::contains).count();
+                            return shared > 0 ? 0L : 1L;
+                        })
+                        .thenComparing(e -> e.getCategoryId() != null
+                                && e.getCategoryId().equals(self.getCategoryId()) ? 0L : 1L)  // 自身 categoryId 也可能为 null，equals 已由左判空保护
+                        .thenComparing(Entry::getId))
+                .toList();
         final int WINDOW = 5;
-        // 分类总数（含自身）≤5：推送该分类下全部其他案例
-        if (all.size() <= WINDOW) {
-            return toVOs(others, true);
-        }
-        // 环形：从“id 大于当前案例”的首个位置起，向下取 5 个，越界则从开头继续
-        int start = 0;
-        for (int i = 0; i < others.size(); i++) {
-            if (others.get(i).getId() > id) {
-                start = i;
-                break;
-            }
-        }
+        // 环形：从排序后首位起取 5 条（个人站量级不足 5 时全量返回）
         List<Entry> picked = new ArrayList<>();
-        for (int k = 0; k < WINDOW; k++) {
-            picked.add(others.get((start + k) % others.size()));
+        for (int k = 0; k < Math.min(WINDOW, ranked.size()); k++) {
+            picked.add(ranked.get(k));
         }
         return toVOs(picked, true);
+    }
+
+    /** 标签串拆分为去重集合（空串安全） */
+    private Set<String> splitTags(String tags) {
+        if (tags == null || tags.isBlank()) {
+            return Set.of();
+        }
+        return Arrays.stream(tags.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toSet());
     }
 
     /** 后台分组视图：按 (设计大类, 案例标题) 聚合，返回每组统计与封面 */
     @Override
     public List<EntryGroupVO> groups(EntryListQuery query, boolean authenticated) {
         QueryWrapper<Entry> w = new QueryWrapper<Entry>()
-                .select("category_id", "title", "MIN(id) AS min_id", "COUNT(*) AS cnt")
-                .groupBy("category_id", "title")
+                .select("COALESCE(category_id, 0) AS cat_key", "title", "MIN(id) AS min_id", "COUNT(*) AS cnt")
+                .groupBy("cat_key", "title")
                 .orderByAsc("MIN(id)");
         String status = authenticated ? query.getStatus() : PUBLISHED;
         if (status != null && !status.isBlank()) {
@@ -229,13 +248,18 @@ public class EntryServiceImpl implements EntryService {
         Set<Long> categoryIds = new HashSet<>();
         Set<Long> minIds = new HashSet<>();
         for (Map<String, Object> r : rows) {
-            categoryIds.add(((Number) r.get("category_id")).longValue());
+            categoryIds.add(((Number) r.get("cat_key")).longValue());
             minIds.add(((Number) r.get("min_id")).longValue());
         }
         Map<Long, String> catNames = new HashMap<>();
-        for (Category c : categoryMapper.selectList(
-                new LambdaQueryWrapper<Category>().in(Category::getId, categoryIds))) {
-            catNames.put(c.getId(), c.getName());
+        // 过滤掉 0（未挂大类的行）后查名称；历史数据迁移期间仍按大类名展示
+        Set<Long> realIds = new HashSet<>(categoryIds);
+        realIds.remove(0L);
+        if (!realIds.isEmpty()) {
+            for (Category c : categoryMapper.selectList(
+                    new LambdaQueryWrapper<Category>().in(Category::getId, realIds))) {
+                catNames.put(c.getId(), c.getName());
+            }
         }
         Map<Long, String> covers = new HashMap<>();
         for (EntryImage im : entryImageMapper.selectList(new QueryWrapper<EntryImage>()
@@ -246,11 +270,11 @@ public class EntryServiceImpl implements EntryService {
         }
         List<EntryGroupVO> result = new ArrayList<>();
         for (Map<String, Object> r : rows) {
-            Long categoryId = ((Number) r.get("category_id")).longValue();
+            Long catKey = ((Number) r.get("cat_key")).longValue();
             long minId = ((Number) r.get("min_id")).longValue();
             EntryGroupVO vo = new EntryGroupVO();
-            vo.setCategoryId(categoryId);
-            vo.setCategoryName(catNames.getOrDefault(categoryId, ""));
+            vo.setCategoryId(catKey);
+            vo.setCategoryName(catNames.getOrDefault(catKey, ""));
             vo.setTitle((String) r.get("title"));
             vo.setCount(((Number) r.get("cnt")).longValue());
             vo.setCover(covers.get(minId));
@@ -268,21 +292,42 @@ public class EntryServiceImpl implements EntryService {
                 .setSql("copy_count = copy_count + 1"));
     }
 
-    /** 管理端总览：统计卡数据 + 最近 5 条已发布案例 */
+    /** 管理端总览：提示词统计 + 文章统计 + 双最近列表 */
     @Override
     public AdminOverviewVO overview() {
         AdminOverviewVO vo = new AdminOverviewVO();
+        // 提示词统计
         vo.setPublished(entryMapper.selectCount(new LambdaQueryWrapper<Entry>()
                 .eq(Entry::getStatus, PUBLISHED)));
         vo.setDrafts(entryMapper.selectCount(new LambdaQueryWrapper<Entry>()
                 .eq(Entry::getStatus, DRAFT)));
-        vo.setCategories(categoryMapper.selectCount(null));
         vo.setTotalViews(entryMapper.sumViewCount());
         vo.setRecent(toVOs(entryMapper.selectList(new QueryWrapper<Entry>()
                         .eq("status", PUBLISHED)
                         .orderByDesc("COALESCE(published_at, created_at)")
                         .last("LIMIT 5")),
                 true));
+        // 文章统计（article 表直接计数，body 不查——仪表盘只需简要字段）
+        vo.setArticleTotal(articleMapper.selectCount(null));
+        vo.setArticleDrafts(articleMapper.selectCount(
+                new LambdaQueryWrapper<com.ailang.service.article.pojo.entity.Article>()
+                        .eq(com.ailang.service.article.pojo.entity.Article::getStatus, DRAFT)));
+        vo.setRecentArticles(articleMapper.selectList(new QueryWrapper<com.ailang.service.article.pojo.entity.Article>()
+                        .select("id", "type", "sub", "title", "status", "display_date")
+                        .orderByDesc("COALESCE(NULLIF(display_date,''), to_char(created_at,'YYYY-MM-DD'))")
+                        .last("LIMIT 5"))
+                .stream()
+                .map(a -> {
+                    AdminOverviewVO.ArticleBrief brief = new AdminOverviewVO.ArticleBrief();
+                    brief.setId(a.getId());
+                    brief.setType(a.getType());
+                    brief.setSub(a.getSub());
+                    brief.setTitle(a.getTitle());
+                    brief.setStatus(a.getStatus());
+                    brief.setDate(a.getDisplayDate());
+                    return brief;
+                })
+                .toList());
         return vo;
     }
 
@@ -296,11 +341,12 @@ public class EntryServiceImpl implements EntryService {
         return entry;
     }
 
-    /** 保存前校验：分类存在 + 效果图与 HTML 源码至少一项 + 状态合法 */
+    /** 保存前校验：标签至少 1 个 + 效果图与 HTML 源码至少一项 + 状态合法（大类不再必填） */
     private void assertSaveValid(EntrySaveRequest request) {
         assertStatusValid(request.getStatus());
-        if (categoryMapper.selectById(request.getCategoryId()) == null) {
-            throw new BizException("所属分类不存在");
+        // 标签即分类（2026-11 方案 A）：标签必填 ≥1，替代原 category 必填
+        if (request.getTags() == null || request.getTags().stream().noneMatch(t -> t != null && !t.isBlank())) {
+            throw new BizException("标签至少填 1 个");
         }
         boolean hasImages = request.getImages() != null && !request.getImages().isEmpty();
         boolean hasHtml = request.getHtmlSource() != null && !request.getHtmlSource().isBlank();
@@ -318,6 +364,7 @@ public class EntryServiceImpl implements EntryService {
     private void applyFields(Entry entry, EntrySaveRequest request) {
         entry.setTitle(request.getTitle());
         entry.setSummary(request.getSummary() == null ? "" : request.getSummary());
+        // 标签即分类：categoryId 不再必填，可空（历史数据保留原值）
         entry.setCategoryId(request.getCategoryId());
         entry.setPlatform(request.getPlatform() == null || request.getPlatform().isBlank() ? "web" : request.getPlatform());
         entry.setStyle(request.getStyle());
@@ -391,14 +438,17 @@ public class EntryServiceImpl implements EntryService {
         Map<Long, List<EntryImage>> imagesByEntry = loadImages(entries);
 
         return entries.stream()
-                .map(entry -> toVO(entry, categoryNames.get(entry.getCategoryId()),
+                .map(entry -> toVO(entry,
+                        entry.getCategoryId() == null ? null : categoryNames.get(entry.getCategoryId()),
                         imagesByEntry.getOrDefault(entry.getId(), List.of()), truncateHtml))
                 .collect(Collectors.toList());
     }
 
     private Map<Long, String> loadCategoryNames(List<Entry> entries) {
         Set<Long> categoryIds = entries.stream()
-                .map(Entry::getCategoryId).collect(Collectors.toSet());
+                .map(Entry::getCategoryId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
         if (categoryIds.isEmpty()) {
             return Map.of();
         }

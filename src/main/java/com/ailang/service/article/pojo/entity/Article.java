@@ -46,6 +46,10 @@ public class Article {
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String body;
 
+    /** 封面图 URL（MinIO objectUrl，可空串）；列表/收藏卡展示用 */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private String cover;
+
     /** 逗号分隔标签串（对外 VO 转数组） */
     @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String tags;

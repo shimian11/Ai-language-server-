@@ -1,13 +1,13 @@
 package com.ailang.service.entry.pojo.dto;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.util.List;
 
 /**
  * 案例新建/更新入参（与前端 EntryEditor payload 对齐）。
+ * 2026-11「标签即分类」：categoryId 不再必填（历史数据保留可回溯），tags 必填 ≥1（Service 校验）。
  */
 @Data
 public class EntrySaveRequest {
@@ -19,8 +19,7 @@ public class EntrySaveRequest {
     /** 案例摘要 */
     private String summary;
 
-    /** 所属大类 ID */
-    @NotNull(message = "所属分类不能为空")
+    /** 所属大类 ID（已废弃必填；历史数据保留，新数据可空） */
     private Long categoryId;
 
     /** 设计风格 */

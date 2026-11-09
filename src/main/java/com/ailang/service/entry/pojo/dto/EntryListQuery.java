@@ -28,4 +28,7 @@ public class EntryListQuery {
 
     /** 平台：web / app；可空 */
     private String platform;
+
+    /** 标签筛选（精确匹配标签串中的一项，可空） */
+    private String tag;
 }

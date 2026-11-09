@@ -32,6 +32,9 @@ public class ArticleVO {
     /** 正文（Markdown/内联 HTML） */
     private String body;
 
+    /** 封面图 URL（可空串） */
+    private String cover;
+
     /** 标签数组 */
     private List<String> tags;
 

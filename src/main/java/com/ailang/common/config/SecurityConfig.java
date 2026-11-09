@@ -40,7 +40,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/ping").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/categories/**", "/api/entries/**").permitAll()
+                        // 分类管理接口已下线（标签即分类），不再放行 /api/categories/**
+                        .requestMatchers(HttpMethod.GET, "/api/entries/**").permitAll()
                         // 博客文章：公开读（隐私规则在 Service 内处理），写操作走 authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/articles/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/entries/*/copy").permitAll()

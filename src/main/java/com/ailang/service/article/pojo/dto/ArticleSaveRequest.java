@@ -34,6 +34,9 @@ public class ArticleSaveRequest {
     /** 正文 Markdown */
     private String body;
 
+    /** 封面图 URL（MinIO objectUrl，可空）；可空文本字段 ALWAYS 策略支持清空 */
+    private String cover;
+
     /** 标签（数组，入库转逗号分隔） */
     private List<String> tags;
 

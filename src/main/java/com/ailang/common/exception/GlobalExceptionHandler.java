@@ -39,6 +39,12 @@ public class GlobalExceptionHandler {
         return ApiResponse.fail(ResultCode.BAD_REQUEST, message);
     }
 
+    /** 已下线接口 / 不存在路径：按 404 语义返回，不记 ERROR 日志 */
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    public ApiResponse<Void> handleNotFound(org.springframework.web.servlet.resource.NoResourceFoundException exception) {
+        return ApiResponse.fail(ResultCode.NOT_FOUND, "接口不存在");
+    }
+
     @ExceptionHandler(Exception.class)
     public ApiResponse<Void> handleUnexpected(Exception exception) {
         log.error("未处理异常", exception);

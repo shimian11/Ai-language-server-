@@ -24,7 +24,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-
 /**
  * 文章 Service 实现。
  * - 隐私规则：未登录强制只看已发布（与案例模块一致）
@@ -81,14 +80,19 @@ public class ArticleServiceImpl implements ArticleService {
         Map<Long, Company> companyMap = companyMap();
         List<ArticleVO> vos = result.getRecords().stream()
                 .map(a -> toVO(a, companyMap))
-                // 空日期排最后：按「是否为空 + 日期 + id」二级排序
-                .sorted(Comparator
-                        .comparing((ArticleVO v) -> v.getDate() == null || v.getDate().isBlank())
-                        .thenComparing(ArticleVO::getDate,
-                                "asc".equalsIgnoreCase(query.getSort())
-                                        ? Comparator.naturalOrder()
-                                        : Comparator.reverseOrder()))
                 .toList();
+        // 空日期排最后：按「是否为空 + 日期 + id」二级排序（同页内稳定；日期非空的行已由 SQL 排好）
+        if ("asc".equalsIgnoreCase(query.getSort())) {
+            vos = vos.stream().sorted(Comparator
+                    .comparing((ArticleVO v) -> v.getDate() == null || v.getDate().isBlank())
+                    .thenComparing(ArticleVO::getDate, Comparator.nullsLast(Comparator.naturalOrder()))
+                    .thenComparing(ArticleVO::getId)).toList();
+        } else {
+            vos = vos.stream().sorted(Comparator
+                    .comparing((ArticleVO v) -> !(v.getDate() == null || v.getDate().isBlank()))
+                    .thenComparing(ArticleVO::getDate, Comparator.nullsLast(Comparator.reverseOrder()))
+                    .thenComparing(ArticleVO::getId, Comparator.reverseOrder())).toList();
+        }
         return PageResult.of(vos, result.getTotal(), result.getCurrent(), result.getSize());
     }
 
@@ -215,6 +219,7 @@ public class ArticleServiceImpl implements ArticleService {
         article.setTitle(request.getTitle());
         article.setSummary(request.getSummary() == null ? "" : request.getSummary());
         article.setBody(request.getBody() == null ? "" : request.getBody());
+        article.setCover(request.getCover() == null ? "" : request.getCover());
         article.setTags(request.getTags() == null ? "" : String.join(",", request.getTags()));
         article.setDisplayDate(request.getDisplayDate() == null ? "" : request.getDisplayDate());
         article.setResult(request.getResult() == null ? "" : request.getResult());
@@ -246,6 +251,7 @@ public class ArticleServiceImpl implements ArticleService {
         vo.setTitle(article.getTitle());
         vo.setSummary(article.getSummary());
         vo.setBody(article.getBody());
+        vo.setCover(article.getCover());
         vo.setTags(article.getTags() == null || article.getTags().isBlank()
                 ? List.of()
                 : List.of(article.getTags().split(",")));
