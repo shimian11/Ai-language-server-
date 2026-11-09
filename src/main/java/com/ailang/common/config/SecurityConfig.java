@@ -41,6 +41,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/ping").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/categories/**", "/api/entries/**").permitAll()
+                        // 博客文章：公开读（隐私规则在 Service 内处理），写操作走 authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/articles/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/entries/*/copy").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(eh -> eh.authenticationEntryPoint(this::unauthorized))
