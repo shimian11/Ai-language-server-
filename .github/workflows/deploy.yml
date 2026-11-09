@@ -1,12 +1,14 @@
 # 后端 CI/CD：构建 jar → 上传服务器 → 重建容器
-# 触发：push 到 master 自动；也可在 Actions 页面手动 Run workflow
-# 前置：仓库 Settings → Secrets and variables → Actions 配置 SERVER_SSH_KEY（部署专用私钥）
+# 【2026-11-09 起停用自动触发】：Actions 额度留给其他项目，
+# 改为「本地打包 → 手动上传服务器」流程（见 docs/开发计划.md P4）。
+# 保留本文件仅为存档与应急手动恢复：如需临时恢复自动部署，
+# 把 on 触发器里 push 注释打开即可（勿长期开启，注意额度）。
 name: Deploy Backend
 
 on:
-  push:
-    branches: [master]
   workflow_dispatch:
+  # push:
+  #   branches: [master]
 
 jobs:
   deploy:
