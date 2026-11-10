@@ -4,6 +4,7 @@ import com.ailang.common.result.ApiResponse;
 import com.ailang.service.article.pojo.dto.ArticleListQuery;
 import com.ailang.service.article.pojo.dto.ArticleSaveRequest;
 import com.ailang.service.article.pojo.dto.CompanyCreateRequest;
+import com.ailang.service.article.pojo.dto.CompanyUpdateRequest;
 import com.ailang.service.article.pojo.vo.ArticleVO;
 import com.ailang.service.article.pojo.vo.CompanyVO;
 import com.ailang.service.article.service.ArticleService;
@@ -66,6 +67,31 @@ public class ArticleController {
     @PostMapping("/companies")
     public ApiResponse<CompanyVO> createCompany(@Valid @RequestBody CompanyCreateRequest request) {
         return ApiResponse.ok(articleService.createCompany(request));
+    }
+
+    /**
+     * 编辑公司节点（实习管理「节点管理」；key 不变，仅改名称/标注/里程碑）。
+     *
+     * @param key     公司稳定标识
+     * @param request 编辑入参
+     * @return 更新后的公司 VO
+     */
+    @PutMapping("/companies/{key}")
+    public ApiResponse<CompanyVO> updateCompany(@PathVariable String key,
+                                                @Valid @RequestBody CompanyUpdateRequest request) {
+        return ApiResponse.ok(articleService.updateCompany(key, request));
+    }
+
+    /**
+     * 删除公司节点（仅当名下无记录；用于清理空节点）。
+     *
+     * @param key 公司稳定标识
+     * @return 空响应
+     */
+    @DeleteMapping("/companies/{key}")
+    public ApiResponse<Void> removeCompany(@PathVariable String key) {
+        articleService.removeCompany(key);
+        return ApiResponse.ok(null);
     }
 
     /**

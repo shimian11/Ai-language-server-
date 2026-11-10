@@ -4,6 +4,7 @@ import com.ailang.common.exception.BizException;
 import com.ailang.service.article.pojo.dto.ArticleListQuery;
 import com.ailang.service.article.pojo.dto.ArticleSaveRequest;
 import com.ailang.service.article.pojo.dto.CompanyCreateRequest;
+import com.ailang.service.article.pojo.dto.CompanyUpdateRequest;
 import com.ailang.service.article.pojo.entity.Article;
 import com.ailang.service.article.pojo.entity.Company;
 import com.ailang.service.article.mapper.ArticleMapper;
@@ -207,6 +208,51 @@ public class ArticleServiceImpl implements ArticleService {
         vo.setCountAll(0L);
         vo.setCountPublished(0L);
         return vo;
+    }
+
+    /** 编辑公司节点：key 为稳定标识保持不变，只更新展示名/标注/里程碑 */
+    @Override
+    @Transactional
+    public CompanyVO updateCompany(String key, CompanyUpdateRequest request) {
+        Company company = companyMapper.selectOne(new QueryWrapper<Company>().eq("key", key));
+        if (company == null) {
+            throw new BizException("公司节点不存在");
+        }
+        String name = request.getName().trim();
+        Company sameName = companyMapper.selectOne(new QueryWrapper<Company>().eq("name", name));
+        if (sameName != null && !sameName.getId().equals(company.getId())) {
+            throw new BizException("公司别名「" + name + "」已被占用");
+        }
+        company.setName(name);
+        company.setMeta(request.getMeta() == null ? "" : request.getMeta().trim());
+        company.setMilestone(Boolean.TRUE.equals(request.getMilestone()));
+        companyMapper.updateById(company);
+
+        CompanyVO vo = new CompanyVO();
+        vo.setKey(company.getKey());
+        vo.setName(company.getName());
+        vo.setMeta(company.getMeta());
+        vo.setMilestone(company.getMilestone());
+        // 计数沿用现有文章归属
+        List<Article> articles = articleMapper.selectList(new QueryWrapper<Article>().eq("company_id", company.getId()));
+        vo.setCountAll((long) articles.size());
+        vo.setCountPublished(articles.stream().filter(a -> PUBLISHED.equals(a.getStatus())).count());
+        return vo;
+    }
+
+    /** 删除公司节点：名下还有记录时拒绝，避免文章变成孤儿 */
+    @Override
+    @Transactional
+    public void removeCompany(String key) {
+        Company company = companyMapper.selectOne(new QueryWrapper<Company>().eq("key", key));
+        if (company == null) {
+            throw new BizException("公司节点不存在");
+        }
+        Long used = articleMapper.selectCount(new QueryWrapper<Article>().eq("company_id", company.getId()));
+        if (used != null && used > 0) {
+            throw new BizException("该节点下还有 " + used + " 篇记录，先移走或删除记录再删节点");
+        }
+        companyMapper.deleteById(company.getId());
     }
 
     /* ==================== 私有工具 ==================== */

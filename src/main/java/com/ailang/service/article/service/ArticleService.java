@@ -3,6 +3,7 @@ package com.ailang.service.article.service;
 import com.ailang.service.article.pojo.dto.ArticleListQuery;
 import com.ailang.service.article.pojo.dto.ArticleSaveRequest;
 import com.ailang.service.article.pojo.dto.CompanyCreateRequest;
+import com.ailang.service.article.pojo.dto.CompanyUpdateRequest;
 import com.ailang.service.article.pojo.vo.ArticleVO;
 import com.ailang.service.article.pojo.vo.CompanyVO;
 
@@ -37,4 +38,10 @@ public interface ArticleService {
 
     /** 新建公司别名（key 由名称生成） */
     CompanyVO createCompany(CompanyCreateRequest request);
+
+    /** 编辑公司节点（key 保持不变，仅改名称/标注/里程碑） */
+    CompanyVO updateCompany(String key, CompanyUpdateRequest request);
+
+    /** 删除公司节点（仅当名下无任何记录时允许，避免文章失去归属） */
+    void removeCompany(String key);
 }
