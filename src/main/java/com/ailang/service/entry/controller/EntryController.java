@@ -3,6 +3,7 @@ package com.ailang.service.entry.controller;
 import com.ailang.common.result.ApiResponse;
 import com.ailang.service.entry.pojo.dto.EntryListQuery;
 import com.ailang.service.entry.pojo.dto.EntrySaveRequest;
+import com.ailang.service.entry.pojo.dto.EntrySortRequest;
 import com.ailang.service.entry.pojo.dto.EntryStatusRequest;
 import com.ailang.service.entry.pojo.dto.PageResult;
 import com.ailang.service.entry.pojo.vo.EntryVO;
@@ -77,6 +78,17 @@ public class EntryController {
     @PostMapping
     public ApiResponse<EntryVO> create(@Valid @RequestBody EntrySaveRequest request) {
         return ApiResponse.ok(entryService.create(request));
+    }
+
+    /**
+     * #10.1 手动排序：按传入 ID 顺序重写 sort。
+     *
+     * @param request 排序请求（ids 按目标展示顺序排列）
+     */
+    @PutMapping("/sort")
+    public ApiResponse<Void> updateSort(@Valid @RequestBody EntrySortRequest request) {
+        entryService.updateSort(request.getIds());
+        return ApiResponse.ok();
     }
 
     /**

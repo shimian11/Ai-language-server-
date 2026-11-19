@@ -59,6 +59,9 @@ public class ArticleVO {
     /** 状态：DRAFT / PUBLISHED */
     private String status;
 
+    /** 手动排序值（小者靠前） */
+    private Integer sort;
+
     /** 首次发布日期（yyyy-MM-dd；未发布为 null） */
     private String publishedAt;
 

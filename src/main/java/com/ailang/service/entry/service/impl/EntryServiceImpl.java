@@ -89,7 +89,8 @@ public class EntryServiceImpl implements EntryService {
                     .or().likeLeft("tags", "," + tag)
                     .or().apply("tags LIKE {0}", "%," + tag + ",%"));
         }
-        wrapper.orderByDesc("COALESCE(published_at, created_at)");
+        // 手动排序优先；未设置时按发布时间倒序兜底
+        wrapper.orderByAsc("sort").orderByDesc("COALESCE(published_at, created_at)");
 
         int page = query.getPage() == null || query.getPage() < 1 ? 1 : query.getPage();
         int size = query.getSize() == null || query.getSize() < 1 ? 10 : query.getSize();
@@ -122,6 +123,10 @@ public class EntryServiceImpl implements EntryService {
 
         Entry entry = new Entry();
         applyFields(entry, request);
+        // 未指定排序时追加到末尾，避免与现有条目并列
+        if (entry.getSort() == null) {
+            entry.setSort(entryMapper.maxSort() + 10);
+        }
         if (PUBLISHED.equals(request.getStatus())) {
             entry.setPublishedAt(LocalDateTime.now());
         }
@@ -141,6 +146,10 @@ public class EntryServiceImpl implements EntryService {
         Entry entry = new Entry();
         entry.setId(id);
         applyFields(entry, request);
+        // 编辑时未传排序则保留原值，避免把拖拽结果重置为 0
+        if (entry.getSort() == null) {
+            entry.setSort(existing.getSort() == null ? 0 : existing.getSort());
+        }
         // 首次发布写 published_at；下架不清理原发布时间
         if (PUBLISHED.equals(request.getStatus()) && existing.getPublishedAt() == null) {
             entry.setPublishedAt(LocalDateTime.now());
@@ -172,6 +181,29 @@ public class EntryServiceImpl implements EntryService {
         requireExisting(id);
         // entry_image 外键 ON DELETE CASCADE 级联删除
         entryMapper.deleteById(id);
+    }
+
+    /**
+     * 手动排序：按传入 ID 顺序重写 sort（10、20、30…）。
+     * 前端一次提交完整顺序，分组顺序由组内最小 sort 自然推导。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateSort(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        int index = 1;
+        for (Long id : ids) {
+            if (id == null) {
+                continue;
+            }
+            // 只更新 sort：实体 updateById 会因 htmlSource 的 ALWAYS 策略把正文置空
+            entryMapper.update(null, new LambdaUpdateWrapper<Entry>()
+                    .eq(Entry::getId, id)
+                    .set(Entry::getSort, index * 10));
+            index++;
+        }
     }
 
     /** 相关案例：共享任一标签的已发布案例优先，其次全部已发布；环形取 5 条 */
@@ -227,8 +259,10 @@ public class EntryServiceImpl implements EntryService {
     @Override
     public List<EntryGroupVO> groups(EntryListQuery query, boolean authenticated) {
         QueryWrapper<Entry> w = new QueryWrapper<Entry>()
-                .select("COALESCE(category_id, 0) AS cat_key", "title", "MIN(id) AS min_id", "COUNT(*) AS cnt")
+                .select("COALESCE(category_id, 0) AS cat_key", "title", "MIN(id) AS min_id",
+                        "MIN(sort) AS min_sort", "COUNT(*) AS cnt")
                 .groupBy("cat_key", "title")
+                .orderByAsc("MIN(sort)")
                 .orderByAsc("MIN(id)");
         String status = authenticated ? query.getStatus() : PUBLISHED;
         if (status != null && !status.isBlank()) {
@@ -372,6 +406,10 @@ public class EntryServiceImpl implements EntryService {
         entry.setHtmlSource(request.getHtmlSource());
         entry.setTags(request.getTags() == null ? "" : String.join(",", request.getTags()));
         entry.setStatus(request.getStatus());
+        // 排序值为空时由 create/update 分别兜底，这里只处理显式传入
+        if (request.getSort() != null) {
+            entry.setSort(request.getSort());
+        }
     }
 
     private void insertImages(Long entryId, List<EntryImageRequest> images) {
@@ -495,6 +533,7 @@ public class EntryServiceImpl implements EntryService {
                 : Arrays.stream(entry.getTags().split(","))
                 .map(String::trim).filter(s -> !s.isEmpty()).collect(Collectors.toList()));
         vo.setStatus(entry.getStatus());
+        vo.setSort(entry.getSort());
         vo.setPublishedAt(entry.getPublishedAt());
         vo.setCreatedAt(entry.getCreatedAt());
         vo.setViewCount(entry.getViewCount());

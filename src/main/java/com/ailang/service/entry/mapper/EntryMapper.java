@@ -14,4 +14,8 @@ public interface EntryMapper extends BaseMapper<Entry> {
     /** 累计浏览数（管理端总览用） */
     @Select("SELECT COALESCE(SUM(view_count), 0) FROM entry")
     long sumViewCount();
+
+    /** 当前最大排序值（新建案例默认追加到末尾） */
+    @Select("SELECT COALESCE(MAX(sort), 0) FROM entry")
+    int maxSort();
 }

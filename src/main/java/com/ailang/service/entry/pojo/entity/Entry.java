@@ -49,6 +49,9 @@ public class Entry {
     /** DRAFT / PUBLISHED */
     private String status;
 
+    /** 手动排序值（小者靠前，后台拖拽维护） */
+    private Integer sort;
+
     /** 首次发布时间；未发布为 null */
     private LocalDateTime publishedAt;
 

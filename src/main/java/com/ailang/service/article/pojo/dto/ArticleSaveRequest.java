@@ -58,4 +58,7 @@ public class ArticleSaveRequest {
     /** 状态：DRAFT / PUBLISHED（缺省 DRAFT） */
     @Pattern(regexp = "DRAFT|PUBLISHED", message = "状态不合法")
     private String status;
+
+    /** 手动排序值；为空时新建追加到末尾、更新保留原值 */
+    private Integer sort;
 }

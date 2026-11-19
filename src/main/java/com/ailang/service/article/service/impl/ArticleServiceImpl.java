@@ -14,6 +14,7 @@ import com.ailang.service.article.pojo.vo.CompanyVO;
 import com.ailang.service.article.service.ArticleService;
 import com.ailang.service.entry.pojo.dto.PageResult;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -70,8 +71,11 @@ public class ArticleServiceImpl implements ArticleService {
                     .or().like("summary", keyword)
                     .or().like("tags", keyword));
         }
-        // 排序：展示日期倒序（asc 传参翻转），同日内按 id 稳定排序
-        if ("asc".equalsIgnoreCase(query.getSort())) {
+        // 排序：manual = 后台手动顺序；其余按展示日期
+        boolean manual = "manual".equalsIgnoreCase(query.getSort());
+        if (manual) {
+            wrapper.orderByAsc("sort", "id");
+        } else if ("asc".equalsIgnoreCase(query.getSort())) {
             wrapper.orderByAsc("display_date", "id");
         } else {
             wrapper.orderByDesc("display_date", "id");
@@ -82,17 +86,19 @@ public class ArticleServiceImpl implements ArticleService {
         List<ArticleVO> vos = result.getRecords().stream()
                 .map(a -> toVO(a, companyMap))
                 .toList();
-        // 空日期排最后：按「是否为空 + 日期 + id」二级排序（同页内稳定；日期非空的行已由 SQL 排好）
-        if ("asc".equalsIgnoreCase(query.getSort())) {
-            vos = vos.stream().sorted(Comparator
-                    .comparing((ArticleVO v) -> v.getDate() == null || v.getDate().isBlank())
-                    .thenComparing(ArticleVO::getDate, Comparator.nullsLast(Comparator.naturalOrder()))
-                    .thenComparing(ArticleVO::getId)).toList();
-        } else {
-            vos = vos.stream().sorted(Comparator
-                    .comparing((ArticleVO v) -> !(v.getDate() == null || v.getDate().isBlank()))
-                    .thenComparing(ArticleVO::getDate, Comparator.nullsLast(Comparator.reverseOrder()))
-                    .thenComparing(ArticleVO::getId, Comparator.reverseOrder())).toList();
+        // 空日期排最后：按「是否为空 + 日期 + id」二级排序（manual 模式保持 sort 顺序）
+        if (!manual) {
+            if ("asc".equalsIgnoreCase(query.getSort())) {
+                vos = vos.stream().sorted(Comparator
+                        .comparing((ArticleVO v) -> v.getDate() == null || v.getDate().isBlank())
+                        .thenComparing(ArticleVO::getDate, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(ArticleVO::getId)).toList();
+            } else {
+                vos = vos.stream().sorted(Comparator
+                        .comparing((ArticleVO v) -> !(v.getDate() == null || v.getDate().isBlank()))
+                        .thenComparing(ArticleVO::getDate, Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(ArticleVO::getId, Comparator.reverseOrder())).toList();
+            }
         }
         return PageResult.of(vos, result.getTotal(), result.getCurrent(), result.getSize());
     }
@@ -114,6 +120,10 @@ public class ArticleServiceImpl implements ArticleService {
         Article article = new Article();
         applyFields(article, request);
         article.setStatus(request.getStatus() == null || request.getStatus().isBlank() ? DRAFT : request.getStatus());
+        // 未指定排序时追加到末尾
+        if (article.getSort() == null) {
+            article.setSort(articleMapper.maxSort() + 10);
+        }
         if (PUBLISHED.equals(article.getStatus())) {
             article.setPublishedAt(LocalDateTime.now());
         }
@@ -154,6 +164,28 @@ public class ArticleServiceImpl implements ArticleService {
     @Transactional
     public void remove(Long id) {
         articleMapper.deleteById(id);
+    }
+
+    /**
+     * 手动排序：按传入 ID 顺序重写 sort（10、20、30…）。
+     * 只更新 sort，避免实体 ALWAYS 策略把正文字段置空。
+     */
+    @Override
+    @Transactional
+    public void updateSort(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        int index = 1;
+        for (Long id : ids) {
+            if (id == null) {
+                continue;
+            }
+            articleMapper.update(null, new LambdaUpdateWrapper<Article>()
+                    .eq(Article::getId, id)
+                    .set(Article::getSort, index * 10));
+            index++;
+        }
     }
 
     /** 公司列表：按 sort 排序，附已发布/全部两个计数 */
@@ -279,6 +311,10 @@ public class ArticleServiceImpl implements ArticleService {
         } else {
             article.setCompanyId(null);
         }
+        // 排序为空时保留原值（update）或由 create 兜底
+        if (request.getSort() != null) {
+            article.setSort(request.getSort());
+        }
     }
 
     /** 公司缓存：id → Company（避免循环内查库） */
@@ -310,6 +346,7 @@ public class ArticleServiceImpl implements ArticleService {
         vo.setResultClass(article.getResultClass());
         vo.setRead(article.getReadLabel());
         vo.setStatus(article.getStatus());
+        vo.setSort(article.getSort());
         vo.setPublishedAt(article.getPublishedAt() == null ? null : DATE_FMT.format(article.getPublishedAt()));
         vo.setCreatedAt(article.getCreatedAt() == null ? null : DATE_FMT.format(article.getCreatedAt()));
         return vo;

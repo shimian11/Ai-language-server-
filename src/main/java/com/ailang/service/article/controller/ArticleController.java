@@ -3,6 +3,7 @@ package com.ailang.service.article.controller;
 import com.ailang.common.result.ApiResponse;
 import com.ailang.service.article.pojo.dto.ArticleListQuery;
 import com.ailang.service.article.pojo.dto.ArticleSaveRequest;
+import com.ailang.service.article.pojo.dto.ArticleSortRequest;
 import com.ailang.service.article.pojo.dto.CompanyCreateRequest;
 import com.ailang.service.article.pojo.dto.CompanyUpdateRequest;
 import com.ailang.service.article.pojo.vo.ArticleVO;
@@ -92,6 +93,17 @@ public class ArticleController {
     public ApiResponse<Void> removeCompany(@PathVariable String key) {
         articleService.removeCompany(key);
         return ApiResponse.ok(null);
+    }
+
+    /**
+     * 手动排序：按传入 ID 顺序重写 sort。
+     *
+     * @param request 排序请求（ids 按目标展示顺序排列）
+     */
+    @PutMapping("/sort")
+    public ApiResponse<Void> updateSort(@Valid @RequestBody ArticleSortRequest request) {
+        articleService.updateSort(request.getIds());
+        return ApiResponse.ok();
     }
 
     /**

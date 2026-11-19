@@ -33,6 +33,9 @@ public interface ArticleService {
     /** 删除文章 */
     void remove(Long id);
 
+    /** 手动排序：按传入 ID 顺序重写 sort（小者靠前） */
+    void updateSort(List<Long> ids);
+
     /** 公司列表（含已发布/全部计数） */
     List<CompanyVO> companies();
 

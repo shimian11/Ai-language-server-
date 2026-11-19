@@ -43,4 +43,7 @@ public class EntrySaveRequest {
 
     /** DRAFT / PUBLISHED；新建/更新时的目标状态 */
     private String status;
+
+    /** 手动排序值；为空时新建追加到末尾、更新保留原值 */
+    private Integer sort;
 }

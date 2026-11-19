@@ -48,6 +48,9 @@ public class EntryVO {
     /** DRAFT / PUBLISHED */
     private String status;
 
+    /** 手动排序值（小者靠前） */
+    private Integer sort;
+
     /** 首次发布时间；未发布为 null */
     @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDateTime publishedAt;

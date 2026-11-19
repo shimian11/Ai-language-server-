@@ -37,6 +37,9 @@ public interface EntryService {
     /** #12 删除：图片记录随外键级联删除 */
     void remove(Long id);
 
+    /** 手动排序：按传入 ID 顺序重写 sort（小者靠前） */
+    void updateSort(List<Long> ids);
+
     /** #13 相关案例：同大类已发布、排除自身、最近 2 条 */
     List<EntryVO> related(Long id);
 
